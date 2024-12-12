@@ -5,6 +5,7 @@
 #   "matplotlib",
 #   "seaborn",
 #   "openai==0.28",
+#   "scipy",
 #   "tqdm",
 # ]
 # ///
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import openai
 from tqdm import tqdm
+import scipy
 
 
 # Configure OpenAI client for AI Proxy
