@@ -111,8 +111,13 @@ def analyze_data(data):
     numeric_data = data.select_dtypes(include=['number'])
     correlations = numeric_data.corr().to_dict()
 
+    # Identify outliers using Z-score
+    from scipy.stats import zscore
+    z_scores = numeric_data.apply(zscore)
+    outliers = (z_scores.abs() > 3).sum().to_dict()
+
     print("Data analysis completed.")
-    return {'description': description, 'correlations': correlations}
+    return {'description': description, 'correlations': correlations,'outliers': outliers}
 
 def generate_visualizations(data, output_dir):
     """
@@ -138,13 +143,17 @@ def generate_visualizations(data, output_dir):
     numeric_data = data.select_dtypes(include=['number'])
     sns.pairplot(numeric_data)
     pairplot_path = os.path.join(output_dir, 'pairplot.png')
+    plt.suptitle("Pairplot of Numeric Columns", y=1.02)
     plt.savefig(pairplot_path)
     visualizations.append(pairplot_path)
     plt.close()
 
     # Example: Heatmap of correlations
-    plt.figure(figsize=(20,20))
-    sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm")
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm", fmt=".2f")
+    plt.title("Correlation Heatmap", fontsize=16)
+    plt.xlabel("Features", fontsize=12)
+    plt.ylabel("Features", fontsize=12)    
     heatmap_path = os.path.join(output_dir, 'heatmap.png')
     plt.savefig(heatmap_path)
     visualizations.append(heatmap_path)
@@ -173,6 +182,9 @@ def generate_narrative(data_summary, visualizations):
     correlation_summary = "\n".join(
         [f"- {col1} and {col2}: {coef:.2f}" for col1, col2, coef in top_correlations]
     )
+    outlier_summary = "\n".join(
+        [f"- {col}: {count} potential outliers" for col, count in data_summary.get('outliers', {}).items()]
+    )
 
     prompt = (
         f"The dataset has the following characteristics:\n"
@@ -181,13 +193,13 @@ def generate_narrative(data_summary, visualizations):
         f"- Data types: {data_summary['dtypes']}\n\n"
         f"Key Metrics:\n"
         f"- Top correlations:\n"
-        + "\n".join(
-            [f"  - {col1} and {col2}: {coef:.2f}" for col1, col2, coef in data_summary.get('top_correlations', [])]
-        ) +
+        + correlation_summary +
+        f"\n\n- Outliers:\n" + outlier_summary +
         "\n\n"
         "Based on these findings, please summarize the key insights in Markdown format. "
         "Highlight any patterns, anomalies, or trends, and suggest potential areas for further analysis."
     )
+
 
     try:
         # Force endpoint override to match the AI Proxy endpoint
@@ -257,8 +269,8 @@ def main():
     print("Starting data analysis pipeline...")
 
     # Initialize progress bar
+    
     with tqdm(total=len(steps), desc="Pipeline Progress", unit="step") as pbar:
-        # Step 1: Load and process data
         pbar.set_description(steps[0])
         data = load_dataset(file_path)
         if data is None:
@@ -266,16 +278,12 @@ def main():
             sys.exit(1)
         pbar.update(1)
 
-        # Step 2: Preprocess data
         pbar.set_description(steps[1])
         processed_data, summary = preprocess_data(data)
         pbar.update(1)
 
-        # Step 3: Analyze data
         pbar.set_description(steps[2])
         analysis_results = analyze_data(processed_data)
-
-        # Generate key metrics for summary
         top_correlations = []
         correlations = analysis_results['correlations']
         for col, values in correlations.items():
@@ -284,22 +292,21 @@ def main():
                     top_correlations.append((col, target, coef))
         top_correlations = sorted(top_correlations, key=lambda x: abs(x[2]), reverse=True)[:5]
         summary['top_correlations'] = top_correlations
+        summary['outliers'] = analysis_results['outliers']
         pbar.update(1)
 
-        # Step 4: Generate visualizations
         pbar.set_description(steps[3])
         visualizations = generate_visualizations(processed_data, output_dir)
         pbar.update(1)
 
-        # Step 5: Generate narrative
         pbar.set_description(steps[4])
         narrative = generate_narrative(summary, visualizations)
         pbar.update(1)
 
-        # Step 6: Save outputs
         pbar.set_description(steps[5])
         save_output(output_dir, narrative, visualizations)
         pbar.update(1)
+
 
     print("Data analysis pipeline completed.")
 if __name__ == "__main__":
