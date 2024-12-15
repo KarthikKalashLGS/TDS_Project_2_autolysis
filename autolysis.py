@@ -19,7 +19,7 @@ import seaborn as sns
 import openai
 from tqdm import tqdm
 import scipy
-
+import argparse
 
 # Configure OpenAI client for AI Proxy
 openai.api_key = os.environ.get("AIPROXY_TOKEN")
@@ -164,6 +164,35 @@ def generate_visualizations(data, output_dir):
     print("Visualizations generated.")
     return visualizations
 
+def visualize_outliers(data, output_dir):
+    """
+    Visualize outliers using boxplots and save them to the output directory.
+
+    Args:
+        data (pd.DataFrame): Dataset for visualization.
+        output_dir (str): Directory to save the visualizations.
+
+    Returns:
+        list: Paths to saved outlier visualization files.
+    """
+    print("Visualizing outliers...")
+    os.makedirs(output_dir, exist_ok=True)
+    outlier_visualizations = []
+
+    numeric_data = data.select_dtypes(include=['number'])
+    for col in numeric_data.columns:
+        plt.figure(figsize=(10, 6))
+        sns.boxplot(x=numeric_data[col])
+        plt.title(f"Boxplot of {col}")
+        file_path = os.path.join(output_dir, f'boxplot_{col}.png')
+        plt.savefig(file_path)
+        plt.close()
+        outlier_visualizations.append(file_path)
+
+    print("Outlier visualizations generated.")
+    return outlier_visualizations
+
+
 def generate_narrative(data_summary, visualizations):
     """
     Generate a narrative summary of the dataset and analysis using OpenAI's GPT.
@@ -187,6 +216,9 @@ def generate_narrative(data_summary, visualizations):
     outlier_summary = "\n".join(
         [f"- {col}: {count} potential outliers" for col, count in data_summary.get('outliers', {}).items()]
     )
+    visualization_references = "\n".join(
+        [f"- {os.path.basename(vis)}" for vis in visualizations]
+    )
 
     prompt = (
         f"The dataset has the following characteristics:\n"
@@ -197,6 +229,7 @@ def generate_narrative(data_summary, visualizations):
         f"- Top correlations:\n"
         + correlation_summary +
         f"\n\n- Outliers:\n" + outlier_summary +
+        "\n\nVisualizations generated include:\n" + visualization_references +
         "\n\n"
         "Based on these findings, please summarize the key insights in Markdown format. "
         "Highlight any patterns, anomalies, or trends, and suggest potential areas for further analysis."
@@ -264,6 +297,7 @@ def main():
         "Preprocessing data",
         "Analyzing data",
         "Generating visualizations",
+        "Visualizing outliers",
         "Generating narrative",
         "Saving outputs"
     ]
@@ -271,7 +305,6 @@ def main():
     print("Starting data analysis pipeline...")
 
     # Initialize progress bar
-    
     with tqdm(total=len(steps), desc="Pipeline Progress", unit="step") as pbar:
         pbar.set_description(steps[0])
         data = load_dataset(file_path)
@@ -302,14 +335,19 @@ def main():
         pbar.update(1)
 
         pbar.set_description(steps[4])
-        narrative = generate_narrative(summary, visualizations)
+        outlier_visualizations = visualize_outliers(processed_data, output_dir)
+        visualizations.extend(outlier_visualizations)  # Include outlier visualizations in the output
         pbar.update(1)
 
         pbar.set_description(steps[5])
+        narrative = generate_narrative(summary, visualizations)
+        pbar.update(1)
+
+        pbar.set_description(steps[6])
         save_output(output_dir, narrative, visualizations)
         pbar.update(1)
 
-
     print("Data analysis pipeline completed.")
+
 if __name__ == "__main__":
     main()
