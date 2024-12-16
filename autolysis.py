@@ -10,6 +10,7 @@
 #   "argparse",
 #   "chardet",
 #   "joblib",
+#   "glob"
 # ]
 # ///
 
@@ -26,7 +27,7 @@ import scipy
 import argparse
 from chardet.universaldetector import UniversalDetector
 from joblib import Parallel, delayed
-
+import glob
 
 
 
@@ -96,7 +97,7 @@ def preprocess_data(data):
     
     # Fill missing numeric values with the mean
     numeric_cols = data.select_dtypes(include=['number']).columns
-    data.fillna({col: numeric_cols[col].mean() for col in numeric_cols}, inplace=True)
+    data.fillna({col: data[col].mean() for col in numeric_cols}, inplace=True)
     # Drop rows with missing categorical values
     data = data.dropna()
 
@@ -289,32 +290,21 @@ def main():
     Example:
         python autolysis.py <csv_file>
     """
-    parser = argparse.ArgumentParser(description="Automated Data Analysis Pipeline")
-    parser.add_argument("csv_file", nargs="?", type=str, help="Path to the CSV file (optional, scans for CSV if not provided)")
-    parser.add_argument("--feature_limit", type=int, default=10, help="Maximum number of features for visualizations")
-    args = parser.parse_args()
-
-    # If csv_file is not provided, search for CSV files in the current directory
-    file_path = args.csv_file
-    if not file_path:
-        csv_files = [f for f in os.listdir(".") if f.endswith(".csv")]
-        if len(csv_files) == 1:
-            file_path = csv_files[0]
-            print(f"No CSV file specified. Automatically selected: {file_path}")
-        elif len(csv_files) > 1:
-            print("Multiple CSV files found. Please specify one:")
-            for i, f in enumerate(csv_files, 1):
-                print(f"{i}. {f}")
-            choice = input("Enter the number of the file to analyze: ")
-            try:
-                file_path = csv_files[int(choice) - 1]
-            except (IndexError, ValueError):
-                print("Invalid choice. Exiting.")
-                sys.exit(1)
-        else:
-            print("No CSV files found in the current directory. Please provide a CSV file path.")
+    if len(sys.argv) == 2:
+        # If a file name is provided, use it
+        file_path = sys.argv[1]
+    else:
+        # Search for the first CSV file in the current directory
+        csv_files = glob.glob("*.csv")
+        if not csv_files:
+            print("No CSV file provided and none found in the current directory.")
+            print("Please provide a CSV file as an argument or place one in the current directory.")
             sys.exit(1)
+        file_path = csv_files[0]  # Use the first found CSV file
+        print(f"No file provided. Using the first CSV file found in the directory: {file_path}")
 
+    # Set output directory based on the file name
+    output_dir = os.path.splitext(os.path.basename(file_path))[0]
 
     file_path = sys.argv[1]
     output_dir = os.path.splitext(os.path.basename(file_path))[0]
