@@ -7,6 +7,9 @@
 #   "openai==0.28",
 #   "scipy",
 #   "tqdm",
+#   "argparse",
+#   "chardet.universaldetector",
+#   "joblib",
 # ]
 # ///
 
@@ -19,11 +22,26 @@ import seaborn as sns
 import openai
 from tqdm import tqdm
 import scipy
+import argparse
+from chardet.universaldetector import UniversalDetector
+from joblib import Parallel, delayed
+
+
 
 
 # Configure OpenAI client for AI Proxy
 openai.api_key = os.environ.get("AIPROXY_TOKEN")
 openai.api_base = "https://aiproxy.sanand.workers.dev/openai/v1"  # Proper path with the v1 endpoint
+
+def detect_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        detector = UniversalDetector()
+        for line in f:
+            detector.feed(line)
+            if detector.done:
+                break
+        detector.close()
+        return detector.result['encoding']
 
 def load_dataset(file_path):
     """
@@ -41,19 +59,17 @@ def load_dataset(file_path):
         data = load_dataset("data.csv")
     """
     print("Loading dataset...")
-    encodings_to_try = ['utf-8', 'latin1', 'ISO-8859-1']
-    for encoding in encodings_to_try:
-        try:
-            data = pd.read_csv(file_path, encoding=encoding)
-            if data.empty:
-                print("Error: Loaded dataset is empty.")
-                return None
-            print("Dataset loaded successfully.")
-            return data
-        except UnicodeDecodeError:
-            pass
-    print("Failed to load dataset with all tried encodings.")
-    return None
+    try:
+        encoding = detect_encoding(file_path)
+        data = pd.read_csv(file_path, encoding=encoding)
+        if data.empty:
+            print("Error: Loaded dataset is empty.")
+            return None
+        print("Dataset loaded successfully.")
+        return data
+    except Exception as e:
+        print(f"Error loading dataset: {e}")
+        return None
 
 def preprocess_data(data):
     """
@@ -79,8 +95,7 @@ def preprocess_data(data):
     
     # Fill missing numeric values with the mean
     numeric_cols = data.select_dtypes(include=['number']).columns
-    data[numeric_cols] = data[numeric_cols].fillna(data[numeric_cols].mean())
-
+    data.fillna({col: numeric_cols[col].mean() for col in numeric_cols}, inplace=True)
     # Drop rows with missing categorical values
     data = data.dropna()
 
@@ -121,48 +136,61 @@ def analyze_data(data):
     print("Data analysis completed.")
     return {'description': description, 'correlations': correlations,'outliers': outliers}
 
-def generate_visualizations(data, output_dir):
+def generate_visualizations(data, output_dir, feature_limit=10):
     """
-    Generate visualizations and save them to the output directory.
+    Dynamically generates visualizations based on the dataset's properties.
 
-    Creates a pairplot and a heatmap of correlations.
-
-    Args:
-        data (pd.DataFrame): The dataset for visualizations.
-        output_dir (str): Directory to save the visualizations.
-
-    Returns:
-        list: Paths to saved visualization files.
-
-    Example:
-        visualizations = generate_visualizations(data, "output")
+    Parameters:
+    - data (DataFrame): The processed dataset.
+    - output_dir (str): Directory to save visualizations.
+    - feature_limit (int): Maximum number of features to visualize at once.
     """
-    print("Generating visualizations...")
-    os.makedirs(output_dir, exist_ok=True)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     visualizations = []
+    high_variance_features = data.var().nlargest(feature_limit).index.tolist()
 
-    # Pairplot (only for numeric columns)
-    numeric_data = data.select_dtypes(include=['number'])
-    sns.pairplot(numeric_data)
-    pairplot_path = os.path.join(output_dir, 'pairplot.png')
-    plt.suptitle("Pairplot of Numeric Columns", y=1.02)
-    plt.savefig(pairplot_path)
-    visualizations.append(pairplot_path)
+    # Heatmap of correlations for top features
+    correlation_subset = data[high_variance_features].corr()
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(correlation_subset, annot=True, fmt='.2f', cmap='coolwarm')
+    plt.title('Correlation Heatmap (Top Features)')
+    plt.savefig(os.path.join(output_dir, 'heatmap.png'))
     plt.close()
+    visualizations.append('heatmap.png')
 
-    # Example: Heatmap of correlations
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm", fmt=".2f")
-    plt.title("Correlation Heatmap", fontsize=16)
-    plt.xlabel("Features", fontsize=12)
-    plt.ylabel("Features", fontsize=12)    
-    heatmap_path = os.path.join(output_dir, 'heatmap.png')
-    plt.savefig(heatmap_path)
-    visualizations.append(heatmap_path)
+    # Pair plot for top features
+    sns.pairplot(data[high_variance_features])
+    plt.savefig(os.path.join(output_dir, 'pairplot.png'))
     plt.close()
+    visualizations.append('pairplot.png')
 
-    print("Visualizations generated.")
     return visualizations
+
+
+
+def visualize_outliers(data, output_dir):
+    print("Visualizing outliers...")
+    os.makedirs(output_dir, exist_ok=True)
+
+    numeric_data = data.select_dtypes(include=['number'])
+
+    def plot_box(col):
+        plt.figure(figsize=(10, 6))
+        sns.boxplot(x=numeric_data[col])
+        plt.title(f"Boxplot of {col}")
+        file_path = os.path.join(output_dir, f'boxplot_{col}.png')
+        plt.savefig(file_path)
+        plt.close()
+        return file_path
+
+    outlier_visualizations = Parallel(n_jobs=-1)(delayed(plot_box)(col) for col in numeric_data.columns)
+
+    print("Outlier visualizations generated.")
+    return outlier_visualizations
+
+
 
 def generate_narrative(data_summary, visualizations):
     """
@@ -187,6 +215,9 @@ def generate_narrative(data_summary, visualizations):
     outlier_summary = "\n".join(
         [f"- {col}: {count} potential outliers" for col, count in data_summary.get('outliers', {}).items()]
     )
+    visualization_references = "\n".join(
+        [f"- {os.path.basename(vis)}" for vis in visualizations]
+    )
 
     prompt = (
         f"The dataset has the following characteristics:\n"
@@ -197,6 +228,7 @@ def generate_narrative(data_summary, visualizations):
         f"- Top correlations:\n"
         + correlation_summary +
         f"\n\n- Outliers:\n" + outlier_summary +
+        "\n\nVisualizations generated include:\n" + visualization_references +
         "\n\n"
         "Based on these findings, please summarize the key insights in Markdown format. "
         "Highlight any patterns, anomalies, or trends, and suggest potential areas for further analysis."
@@ -252,18 +284,43 @@ def main():
     Example:
         python autolysis.py <csv_file>
     """
-    if len(sys.argv) != 2:
-        print("Usage: python autolysis.py <csv_file>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Automated Data Analysis Pipeline")
+    parser.add_argument("csv_file", nargs="?", type=str, help="Path to the CSV file (optional, scans for CSV if not provided)")
+    parser.add_argument("--feature_limit", type=int, default=10, help="Maximum number of features for visualizations")
+    args = parser.parse_args()
+
+    # If csv_file is not provided, search for CSV files in the current directory
+    file_path = args.csv_file
+    if not file_path:
+        csv_files = [f for f in os.listdir(".") if f.endswith(".csv")]
+        if len(csv_files) == 1:
+            file_path = csv_files[0]
+            print(f"No CSV file specified. Automatically selected: {file_path}")
+        elif len(csv_files) > 1:
+            print("Multiple CSV files found. Please specify one:")
+            for i, f in enumerate(csv_files, 1):
+                print(f"{i}. {f}")
+            choice = input("Enter the number of the file to analyze: ")
+            try:
+                file_path = csv_files[int(choice) - 1]
+            except (IndexError, ValueError):
+                print("Invalid choice. Exiting.")
+                sys.exit(1)
+        else:
+            print("No CSV files found in the current directory. Please provide a CSV file path.")
+            sys.exit(1)
+
 
     file_path = sys.argv[1]
     output_dir = os.path.splitext(os.path.basename(file_path))[0]
 
     steps = [
+        "Detecting file encoding",
         "Loading dataset",
         "Preprocessing data",
         "Analyzing data",
         "Generating visualizations",
+        "Visualizing outliers",
         "Generating narrative",
         "Saving outputs"
     ]
@@ -271,20 +328,24 @@ def main():
     print("Starting data analysis pipeline...")
 
     # Initialize progress bar
-    
     with tqdm(total=len(steps), desc="Pipeline Progress", unit="step") as pbar:
         pbar.set_description(steps[0])
+        encoding = detect_encoding(file_path)
+        print(f"Detected encoding: {encoding}")
+        pbar.update(1)
+
+        pbar.set_description(steps[1])
         data = load_dataset(file_path)
         if data is None:
             print("Error: Dataset could not be loaded.")
             sys.exit(1)
         pbar.update(1)
 
-        pbar.set_description(steps[1])
+        pbar.set_description(steps[2])
         processed_data, summary = preprocess_data(data)
         pbar.update(1)
 
-        pbar.set_description(steps[2])
+        pbar.set_description(steps[3])
         analysis_results = analyze_data(processed_data)
         top_correlations = []
         correlations = analysis_results['correlations']
@@ -297,19 +358,25 @@ def main():
         summary['outliers'] = analysis_results['outliers']
         pbar.update(1)
 
-        pbar.set_description(steps[3])
+        pbar.set_description(steps[4])
         visualizations = generate_visualizations(processed_data, output_dir)
         pbar.update(1)
 
-        pbar.set_description(steps[4])
+        pbar.set_description(steps[5])
+        outlier_visualizations = visualize_outliers(processed_data, output_dir)
+        visualizations.extend(outlier_visualizations)  # Include outlier visualizations in the output
+        pbar.update(1)
+
+        pbar.set_description(steps[6])
         narrative = generate_narrative(summary, visualizations)
         pbar.update(1)
 
-        pbar.set_description(steps[5])
+        pbar.set_description(steps[7])
         save_output(output_dir, narrative, visualizations)
         pbar.update(1)
 
-
     print("Data analysis pipeline completed.")
+
+
 if __name__ == "__main__":
     main()
