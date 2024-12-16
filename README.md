@@ -181,8 +181,9 @@ output/
 
 For queries or support, reach out to:
 
-- **Author**: Your Name
-- **Email**: your.email@example.com
+- **Author**: Karthik Kalash
+- **Email**: 21f3000628@ds.study.iitm.ac.in
+
 
 ---
 
