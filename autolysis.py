@@ -149,7 +149,11 @@ def generate_visualizations(data, output_dir, feature_limit=10):
         os.makedirs(output_dir)
 
     visualizations = []
-    high_variance_features = data.var().nlargest(feature_limit).index.tolist()
+    numeric_data = data.select_dtypes(include=['number'])
+    high_variance_features = numeric_data.var().nlargest(feature_limit).index.tolist()
+    if len(high_variance_features) > 5:  # Adjust this number for fewer features
+        high_variance_features = high_variance_features[:5]
+
 
     # Heatmap of correlations for top features
     correlation_subset = data[high_variance_features].corr()
