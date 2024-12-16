@@ -1,212 +1,192 @@
+# Automated Data Analysis Pipeline
 
-TDS\_Project\_2\_Autolysis
-==========================
+Welcome to the **Automated Data Analysis Pipeline**, a Python-based tool designed to streamline the process of data loading, preprocessing, analysis, visualization, and generating AI-driven insights. With this pipeline, you can efficiently uncover patterns, trends, and actionable insights from your datasets.
 
-Overview
---------
+---
 
-The **TDS\_Project\_2\_Autolysis** Python script is designed to automate the process of data analysis, starting from dataset loading and preprocessing to generating detailed visual reports. The script provides a pipeline for performing Exploratory Data Analysis (EDA), creating insightful visualizations, and generating narrative summaries of the dataset's characteristics. This integration with OpenAI’s GPT model allows for the automatic generation of text-based reports based on the dataset’s analysis.
+## Features
 
-Features
---------
+- **Automatic Encoding Detection**: Handles non-standard encodings to ensure smooth data loading.
+- **Preprocessing**: Cleans datasets by addressing missing values and preparing them for analysis.
+- **Exploratory Analysis**: Computes descriptive statistics, correlations, and detects outliers.
+- **Visualizations**:
+  - Correlation heatmaps for top features.
+  - Pair plots to explore feature relationships.
+  - Boxplots highlighting potential outliers.
+- **AI-Generated Narratives**: Summarizes insights using OpenAI's GPT model in Markdown format.
+- **Scalable Execution**: Handles large datasets and generates visualizations in parallel.
 
-### 1\. Data Loading
+---
 
-*   Supports loading CSV files with varying encodings.
-    
+## Requirements
 
-### 2\. Data Preprocessing
+### Python Version
+Python >= 3.11
 
-*   Handles missing values by:
-    
-    *   Filling missing numeric columns with the mean.
-        
-    *   Dropping rows with missing categorical data.
-        
+### Dependencies
+The following Python libraries are required:
 
-### 3\. Exploratory Data Analysis (EDA)
+```plaintext
+pandas
+matplotlib
+seaborn
+openai==0.28
+scipy
+tqdm
+argparse
+chardet
+joblib
+```
 
-*   Computes descriptive statistics.
-    
-*   Identifies correlations between features.
-    
-*   Detects outliers using Z-scores.
-    
+Install dependencies using:
 
-### 4\. Data Visualizations
+```bash
+pip install -r requirements.txt
+```
 
-*   Generates visualizations including:
-    
-    *   Pairplot for numerical feature relationships.
-        
-    *   Heatmap to visualize feature correlations.
-        
+---
 
-### 5\. Narrative Generation
+## Usage
 
-*   Utilizes OpenAI’s GPT model to create a Markdown report summarizing:
-    
-    *   Key dataset insights.
-        
-    *   Correlations between features.
-        
-    *   Outliers detected.
-        
+### Running the Script
 
-### 6\. Output Saving
+To execute the pipeline:
 
-*   Saves the generated report and visualizations in a specified directory.
-    
+```bash
+python script_name.py <file_path> <output_directory>
+```
 
-Requirements
-------------
+#### Arguments:
+- `<file_path>`: Path to the input CSV file.
+- `<output_directory>`: Directory where visualizations and the narrative will be saved.
 
-*   **Python version**: 3.11 or higher
-    
-*   **Required Python libraries**:
-    
-    *   pandas
-        
-    *   matplotlib
-        
-    *   seaborn
-        
-    *   openai==0.28
-        
-    *   scipy
-        
-    *   tqdm
-        
+### Example Command
 
-Setup
------
+```bash
+python data_analysis_pipeline.py data/sample_data.csv output/
+```
 
-### Install Dependencies
+---
 
-**To install the necessary Python libraries, run the following command:**
+## Functions Overview
 
- install pandas matplotlib seaborn openai==0.28 scipy tqdm   `
+### 1. **detect_encoding(file_path)**
 
-### Set OpenAI API Key
+Detects the encoding of the input file to handle non-standard character sets.
 
-**The script requires an OpenAI API key for generating the narrative. Set the key by exporting the AIPROXY\_TOKEN environment variable:**
+- **Input**: Path to the file.
+- **Output**: Detected encoding as a string.
 
- AIPROXY_TOKEN="your-api-key"   `
+---
 
-### Run the Script
+### 2. **load_dataset(file_path)**
 
-**Run the script by providing the path to your CSV file:**
+Loads the dataset, resolving encoding issues if necessary.
 
- python autolysis.py` 
+- **Input**: Path to the CSV file.
+- **Output**: A `pandas.DataFrame` containing the dataset or `None` if loading fails.
 
-This will process the dataset and save the results in a directory named after the CSV file (without the extension).
+---
 
-Functions
----------
+### 3. **preprocess_data(data)**
 
-### load\_dataset(file\_path)
+Cleans and preprocesses the dataset by filling missing values and summarizing metadata.
 
-**Description**: Loads a CSV file from the specified path, attempting different encodings if necessary.
+- **Input**: A `pandas.DataFrame`.
+- **Output**: Processed DataFrame and a summary dictionary with missing values and data types.
 
-**Arguments**:
-*   file\_path (str): Path to the CSV file.
+---
 
-  **Returns**:
-    
-*   pd.DataFrame: Loaded dataset, or None if loading fails.
-    
+### 4. **analyze_data(data)**
 
-### preprocess\_data(data)
+Performs exploratory analysis, calculating descriptive statistics, correlations, and identifying outliers.
 
-**Description**: Preprocesses the data by filling missing numeric values with the mean and dropping rows with missing categorical values.
+- **Input**: A `pandas.DataFrame`.
+- **Output**: A dictionary containing the analysis results.
 
-**Arguments**:
+---
 
-*   data (pd.DataFrame): Dataset to preprocess.
+### 5. **generate_visualizations(data, output_dir, feature_limit=10)**
 
-**Returns**:
-    
-*   tuple: Processed DataFrame and a summary dictionary containing missing values and data types.
-    
+Creates visualizations such as correlation heatmaps and pair plots for high-variance features.
 
-### analyze\_data(data)
+- **Input**:
+  - `data`: A `pandas.DataFrame`.
+  - `output_dir`: Directory to save visualizations.
+  - `feature_limit`: Number of features to include in visualizations (default: 10).
+- **Output**: List of file paths to the generated visualizations.
 
-**Description**: Performs exploratory analysis, including descriptive statistics, correlations, and outlier detection (Z-score).
+---
 
-**Arguments**:
+### 6. **visualize_outliers(data, output_dir)**
 
-*   data (pd.DataFrame): Dataset for analysis.
+Generates boxplots to visualize potential outliers in numeric columns.
 
-**Returns**:
-    
-*   dict: Analysis results containing descriptions, correlations, and outlier counts.
-    
+- **Input**:
+  - `data`: A `pandas.DataFrame`.
+  - `output_dir`: Directory to save visualizations.
+- **Output**: List of file paths to the generated boxplots.
 
-### generate\_visualizations(data, output\_dir)
+---
 
-**Description**: Creates visualizations (pairplot and correlation heatmap) and saves them to the specified directory.
+### 7. **generate_narrative(data_summary, visualizations)**
 
-**Arguments**:
+Generates a Markdown-formatted narrative summarizing dataset insights and visualizations using OpenAI's GPT model.
 
-*   data (pd.DataFrame): Dataset for visualization.
-    
-*   output\_dir (str): Directory where visualizations will be saved.'
-  
-  **Returns**:
-    
-*   list: Paths to the saved visualization files.
-    
+- **Input**:
+  - `data_summary`: A summary dictionary containing dataset metadata.
+  - `visualizations`: List of paths to the visualizations.
+- **Output**: Narrative text in Markdown format.
 
-### generate\_narrative(data\_summary, visualizations)
+---
 
-**Description**: Generates a textual summary of the dataset using OpenAI's GPT model, highlighting key insights, correlations, and outliers.
+### Main Execution Flow
 
-**Arguments**:
+1. Load the dataset using `load_dataset()`.
+2. Preprocess the data with `preprocess_data()`.
+3. Analyze the data using `analyze_data()`.
+4. Generate visualizations with `generate_visualizations()` and `visualize_outliers()`.
+5. Create a narrative summary using `generate_narrative()`.
+6. Save all outputs to the specified directory.
 
-*   data\_summary (dict): Summary of the dataset (missing values, data types, correlations, outliers).
-    
-*   visualizations (list): List of paths to saved visualizations.
+---
 
-  **Returns**:
-    
-*   str: Narrative in Markdown format.
-    
+## Output
 
-### save\_output(output\_dir, narrative, visualizations)
+- **Visualizations**:
+  - Heatmaps
+  - Pair plots
+  - Boxplots
+- **Markdown Report**:
+  - Dataset summary
+  - Key insights
+  - Suggested areas for further analysis
 
-**Description**: Saves the generated narrative and visualizations to the output directory.
+---
 
-**Arguments**:
+## Example Output Directory
 
-*   output\_dir (str): Directory to save the outputs.
-    
-*   narrative (str): Generated narrative.
-    
-*   visualizations (list): List of visualization file paths.
-    
+```plaintext
+output/
+├── heatmap.png
+├── pairplot.png
+├── boxplot_column1.png
+├── boxplot_column2.png
+├── narrative.md
+```
 
-### main()
+---
 
-**Description**: Orchestrates the entire data analysis pipeline, from loading the dataset to saving the results.
+## Contact
 
-**Usage**: Run the script with a CSV file as an argument:
+For queries or support, reach out to:
 
-  python autolysis.py 
+- **Author**: Your Name
+- **Email**: your.email@example.com
 
-Example Output
---------------
+---
 
-Once the script completes, the following files will be generated in the output directory:
+## License
 
-*   README.md: A Markdown file containing the narrative summary.
-    
-*   pairplot.png: A pairplot visualization of numeric columns.
-    
-*   heatmap.png: A heatmap showing correlations between numeric columns.
-    
-
-Conclusion
-----------
-
-This script automates the entire data analysis process, from loading and cleaning the data to generating insightful visualizations and detailed reports. It’s an ideal tool for quickly gaining insights from datasets and creating professional reports for further analysis.
+This project is licensed under the MIT License. See `LICENSE` for details.
 
