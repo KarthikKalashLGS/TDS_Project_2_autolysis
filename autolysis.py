@@ -8,7 +8,7 @@
 #   "scipy",
 #   "tqdm",
 #   "argparse",
-#   "chardet.universaldetector",
+#   "chardet",
 #   "joblib",
 # ]
 # ///
@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import openai
 from tqdm import tqdm
+import chardet
 import scipy
 import argparse
 from chardet.universaldetector import UniversalDetector
