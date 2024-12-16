@@ -139,41 +139,40 @@ def analyze_data(data):
     return {'description': description, 'correlations': correlations,'outliers': outliers}
 
 def generate_visualizations(data, output_dir, feature_limit=10):
-    """
-    Dynamically generates visualizations based on the dataset's properties.
-
-    Parameters:
-    - data (DataFrame): The processed dataset.
-    - output_dir (str): Directory to save visualizations.
-    - feature_limit (int): Maximum number of features to visualize at once.
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
+    print("Generating visualizations...")
+    os.makedirs(output_dir, exist_ok=True)
     visualizations = []
+
+    # Ensure only numeric columns are considered for high variance selection
     numeric_data = data.select_dtypes(include=['number'])
     high_variance_features = numeric_data.var().nlargest(feature_limit).index.tolist()
     if len(high_variance_features) > 5:  # Adjust this number for fewer features
         high_variance_features = high_variance_features[:5]
 
-
     # Heatmap of correlations for top features
-    correlation_subset = data[high_variance_features].corr()
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(correlation_subset, annot=True, fmt='.2f', cmap='coolwarm')
+    correlation_subset = numeric_data[high_variance_features].corr()
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(correlation_subset, annot=True, fmt='.2f', cmap='coolwarm',cbar_kws={'shrink': 0.8} )
     plt.title('Correlation Heatmap (Top Features)')
-    plt.savefig(os.path.join(output_dir, 'heatmap.png'))
-    plt.close()
-    visualizations.append('heatmap.png')
+    plt.xticks(rotation=45, ha='right', fontsize=10)  # Rotate and adjust font size for clarity
+    plt.yticks(rotation=0, fontsize=10)
 
-    # Pair plot for top features
-    sns.pairplot(data[high_variance_features])
-    plt.savefig(os.path.join(output_dir, 'pairplot.png'))
+
+    heatmap_path = os.path.join(output_dir, 'heatmap.png')
+    plt.savefig(heatmap_path,dpi = 100)
     plt.close()
-    visualizations.append('pairplot.png')
+    visualizations.append(heatmap_path)
+
+    # Pair plot for top features (using sample for large datasets)
+    sample_data = numeric_data[high_variance_features].sample(
+    n=min(500, len(numeric_data)))
+    pairplot_path = os.path.join(output_dir, 'pairplot.png')
+    sns.pairplot(sample_data)
+    plt.savefig(pairplot_path)
+    plt.close()
+    visualizations.append(pairplot_path)
 
     return visualizations
-
 
 
 def visualize_outliers(data, output_dir):
@@ -181,20 +180,32 @@ def visualize_outliers(data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     numeric_data = data.select_dtypes(include=['number'])
+    iqr_threshold = 1.5
+
+    def has_outliers(series):
+        q1, q3 = series.quantile(0.25), series.quantile(0.75)
+        iqr = q3 - q1
+        outliers = ((series < q1 - iqr_threshold * iqr) | (series > q3 + iqr_threshold * iqr)).sum()
+        return outliers > 0
+
+    outlier_columns = [col for col in numeric_data.columns if has_outliers(numeric_data[col])]
 
     def plot_box(col):
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(8, 5))
         sns.boxplot(x=numeric_data[col])
         plt.title(f"Boxplot of {col}")
         file_path = os.path.join(output_dir, f'boxplot_{col}.png')
-        plt.savefig(file_path)
+        plt.savefig(file_path, dpi=100)
         plt.close()
         return file_path
 
-    outlier_visualizations = Parallel(n_jobs=-1)(delayed(plot_box)(col) for col in numeric_data.columns)
+    outlier_visualizations = Parallel(n_jobs=-1)(
+        delayed(plot_box)(col) for col in outlier_columns
+    )
 
     print("Outlier visualizations generated.")
     return outlier_visualizations
+
 
 
 
@@ -288,27 +299,27 @@ def main():
     Handles dataset loading, preprocessing, analysis, visualization, narrative generation, and output saving.
 
     Example:
-        python autolysis.py <csv_file>
+        uv python autolysis.py <csv_file>
     """
+    # Determine file path
     if len(sys.argv) == 2:
-        # If a file name is provided, use it
+        # Use the provided file name
         file_path = sys.argv[1]
     else:
-        # Search for the first CSV file in the current directory
+        # Automatically select the first CSV file in the directory
         csv_files = glob.glob("*.csv")
+        
         if not csv_files:
-            print("No CSV file provided and none found in the current directory.")
-            print("Please provide a CSV file as an argument or place one in the current directory.")
+            print("Error: No CSV files found in the current directory.")
             sys.exit(1)
-        file_path = csv_files[0]  # Use the first found CSV file
-        print(f"No file provided. Using the first CSV file found in the directory: {file_path}")
+        
+        file_path = csv_files[0]
+        print(f"No file provided. Using the first CSV file found: {file_path}")
 
     # Set output directory based on the file name
     output_dir = os.path.splitext(os.path.basename(file_path))[0]
 
-    file_path = sys.argv[1]
-    output_dir = os.path.splitext(os.path.basename(file_path))[0]
-
+    # Define pipeline steps
     steps = [
         "Detecting file encoding",
         "Loading dataset",
@@ -322,56 +333,69 @@ def main():
 
     print("Starting data analysis pipeline...")
 
-    # Initialize progress bar
-    with tqdm(total=len(steps), desc="Pipeline Progress", unit="step") as pbar:
-        pbar.set_description(steps[0])
-        encoding = detect_encoding(file_path)
-        print(f"Detected encoding: {encoding}")
-        pbar.update(1)
+    # Initialize tqdm progress bar
+    with tqdm(total=len(steps), desc=steps[0], unit="step") as pbar:
+        try:
+            # Step 1: Detect encoding
+            pbar.set_description(steps[0])
+            encoding = detect_encoding(file_path)
+            print(f"Detected encoding: {encoding}")
+            pbar.update(1)
 
-        pbar.set_description(steps[1])
-        data = load_dataset(file_path)
-        if data is None:
-            print("Error: Dataset could not be loaded.")
+            # Step 2: Load dataset
+            pbar.set_description(steps[1])
+            data = load_dataset(file_path)
+            if data is None or data.empty:
+                print("Error: Dataset could not be loaded or is empty.")
+                sys.exit(1)
+            pbar.update(1)
+
+            # Step 3: Preprocess data
+            pbar.set_description(steps[2])
+            processed_data, summary = preprocess_data(data)
+            pbar.update(1)
+
+            # Step 4: Analyze data
+            pbar.set_description(steps[3])
+            analysis_results = analyze_data(processed_data)
+            
+            # Extract top correlations
+            top_correlations = []
+            correlations = analysis_results['correlations']
+            for col, values in correlations.items():
+                for target, coef in values.items():
+                    if col != target:
+                        top_correlations.append((col, target, coef))
+            top_correlations = sorted(top_correlations, key=lambda x: abs(x[2]), reverse=True)[:5]
+            summary['top_correlations'] = top_correlations
+            summary['outliers'] = analysis_results['outliers']
+            pbar.update(1)
+
+            # Step 5: Generate visualizations
+            pbar.set_description(steps[4])
+            visualizations = generate_visualizations(processed_data, output_dir)
+            pbar.update(1)
+
+            # Step 6: Visualize outliers
+            pbar.set_description(steps[5])
+            outlier_visualizations = visualize_outliers(processed_data, output_dir)
+            visualizations.extend(outlier_visualizations)
+            pbar.update(1)
+
+            # Step 7: Generate narrative
+            pbar.set_description(steps[6])
+            narrative = generate_narrative(summary, visualizations)
+            pbar.update(1)
+
+            # Step 8: Save outputs
+            pbar.set_description(steps[7])
+            save_output(output_dir, narrative, visualizations)
+            pbar.update(1)
+
+            print("Data analysis pipeline completed successfully.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
             sys.exit(1)
-        pbar.update(1)
-
-        pbar.set_description(steps[2])
-        processed_data, summary = preprocess_data(data)
-        pbar.update(1)
-
-        pbar.set_description(steps[3])
-        analysis_results = analyze_data(processed_data)
-        top_correlations = []
-        correlations = analysis_results['correlations']
-        for col, values in correlations.items():
-            for target, coef in values.items():
-                if col != target:
-                    top_correlations.append((col, target, coef))
-        top_correlations = sorted(top_correlations, key=lambda x: abs(x[2]), reverse=True)[:5]
-        summary['top_correlations'] = top_correlations
-        summary['outliers'] = analysis_results['outliers']
-        pbar.update(1)
-
-        pbar.set_description(steps[4])
-        visualizations = generate_visualizations(processed_data, output_dir)
-        pbar.update(1)
-
-        pbar.set_description(steps[5])
-        outlier_visualizations = visualize_outliers(processed_data, output_dir)
-        visualizations.extend(outlier_visualizations)  # Include outlier visualizations in the output
-        pbar.update(1)
-
-        pbar.set_description(steps[6])
-        narrative = generate_narrative(summary, visualizations)
-        pbar.update(1)
-
-        pbar.set_description(steps[7])
-        save_output(output_dir, narrative, visualizations)
-        pbar.update(1)
-
-    print("Data analysis pipeline completed.")
-
 
 if __name__ == "__main__":
     main()
